@@ -18,6 +18,7 @@
  */
 package org.elasticsearch.hadoop.rest.commonshttp;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Splitter;
 import com.google.common.base.Strings;
 import org.apache.commons.httpclient.*;
@@ -243,14 +244,14 @@ public class CommonsHttpTransport implements Transport, StatsAware {
 
         this.headers = new HeaderProcessor(settings);
 
-        initializeHttpTransofrmersFromSettings(settings, secureSettings, host);
+        initializeHttpTransformersFromSettings(settings, secureSettings, host);
 
         if (log.isTraceEnabled()) {
             log.trace("Opening HTTP transport to " + httpInfo);
         }
     }
 
-    private void initializeHttpTransofrmersFromSettings(Settings settings, SecureSettings secureSettings, String host) {
+    private void initializeHttpTransformersFromSettings(Settings settings, SecureSettings secureSettings, String host) {
         String transformerFactories = settings.getHttpTransformerFactories();
         if (!Strings.isNullOrEmpty(transformerFactories)) {
             Iterable<String> transformerFactoriesClassNames = Splitter.on(",").omitEmptyStrings().trimResults().split(transformerFactories);
@@ -848,5 +849,29 @@ public class CommonsHttpTransport implements Transport, StatsAware {
             throw new IllegalArgumentException("transformer cannot be null");
         }
         afterHttpTransformers.add(transformer);
+    }
+
+    public void removeBeforeHttpTransformer(HttpTransformer transformer) {
+        if (transformer == null) {
+            throw new IllegalArgumentException("transformer cannot be null");
+        }
+        beforeHttpTransformers.remove(transformer);
+    }
+
+    public void removeAfterHttpTransformer(HttpTransformer transformer) {
+        if (transformer == null) {
+            throw new IllegalArgumentException("transformer cannot be null");
+        }
+        afterHttpTransformers.remove(transformer);
+    }
+
+    @VisibleForTesting
+        /* package */ List<HttpTransformer> getBeforeHttpTransformers() {
+        return new ArrayList<>(beforeHttpTransformers);
+    }
+
+    @VisibleForTesting
+        /* package */ List<HttpTransformer> getAfterHttpTransformers() {
+        return new ArrayList<>(afterHttpTransformers);
     }
 }

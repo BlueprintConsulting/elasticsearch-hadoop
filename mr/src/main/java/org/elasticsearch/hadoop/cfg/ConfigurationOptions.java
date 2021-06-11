@@ -193,8 +193,6 @@ public interface ConfigurationOptions {
     String ES_MAPPING_VERSION_TYPE_EXTERNAL_GT = "external_gt";
     String ES_MAPPING_VERSION_TYPE_EXTERNAL_GTE = "external_gte";
     String ES_MAPPING_VERSION_TYPE_FORCE = "force";
-    String ES_MAPPING_DATE_FORMAT_MAPPINGS = "es.mapping.date.format-mappings";
-    String ES_DYNAMIC_MAPPING_DATE_FORMATS = "es.mapping.dynamic_date_formats";
 
     String ES_MAPPING_INCLUDE = "es.mapping.include";
     String ES_MAPPING_INCLUDE_DEFAULT = "";
