@@ -193,6 +193,8 @@ public interface ConfigurationOptions {
     String ES_MAPPING_VERSION_TYPE_EXTERNAL_GT = "external_gt";
     String ES_MAPPING_VERSION_TYPE_EXTERNAL_GTE = "external_gte";
     String ES_MAPPING_VERSION_TYPE_FORCE = "force";
+    String ES_MAPPING_DATE_FORMAT_MAPPINGS = "es.mapping.date.format-mappings";
+    String ES_DYNAMIC_MAPPING_DATE_FORMATS = "es.mapping.dynamic_date_formats";
 
     String ES_MAPPING_INCLUDE = "es.mapping.include";
     String ES_MAPPING_INCLUDE_DEFAULT = "";
@@ -287,6 +289,9 @@ public interface ConfigurationOptions {
 
     String ES_NET_HTTP_AUTH_USER = "es.net.http.auth.user";
     String ES_NET_HTTP_AUTH_PASS = "es.net.http.auth.pass";
+
+    String ES_HTTP_TRANSFORMER_FACTORIES = "es.net.http.transformer.factories";
+    String ES_HTTP_TRANSFORMER_FACTORIES_DEFAULT = "";
 
     String ES_NET_SPNEGO_AUTH_ELASTICSEARCH_PRINCIPAL = "es.net.spnego.auth.elasticsearch.principal";
     String ES_NET_SPNEGO_AUTH_MUTUAL = "es.net.spnego.auth.mutual";
