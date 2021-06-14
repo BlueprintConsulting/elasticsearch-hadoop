@@ -8,7 +8,9 @@ dependencies {
     api(project.ext.hadoopClient)
     api("org.apache.hadoop:hadoop-common:${project.ext.hadoopVersion}")
     api("org.apache.hadoop:hadoop-mapreduce-client-core:${project.ext.hadoopVersion}")
-    
+
+    implementation("com.google.guava:guava:16.0.1")
+
     implementation("commons-logging:commons-logging:1.1.1")
     implementation("commons-httpclient:commons-httpclient:3.0.1")
     implementation("commons-codec:commons-codec:1.4")
