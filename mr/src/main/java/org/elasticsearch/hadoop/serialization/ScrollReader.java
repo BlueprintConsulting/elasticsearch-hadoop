@@ -987,6 +987,18 @@ public class ScrollReader implements Closeable {
     }
 
     protected Object map(String fieldMapping, Parser parser) {
+        // If object doesn't have any fields declared in mapping
+        if (parsingCallback != null && !parsingCallback.hasFields(fieldMapping)) {
+            // Go to the end of this object and just return null
+            while (parser.currentToken() != Token.END_OBJECT) {
+                parser.nextToken();
+            }
+            parser.nextToken();
+
+            // Even if this field is an object, because it doesn't have any mapping we set it as null value so we don't break
+            return null;
+        }
+
         Token t = parser.currentToken();
 
         if (t == null) {

@@ -47,4 +47,8 @@ public interface ValueParsingCallback {
     void beginGeoField();
 
     void endGeoField();
+
+	void refreshCurrentField();
+
+	Boolean hasFields(String mapping);
 }

@@ -147,4 +147,24 @@ class ScalaRowValueReader extends ScalaValueReader with RowValueReader with Valu
   def endGeoField(): Unit = {
     currentFieldIsGeo = false
   }
+
+  override def endField(fieldName: String): Unit = {
+    super.endField(fieldName)
+
+    // Once we finish with a field we want to make sure sparkRowField reflects the reality
+    refreshCurrentField()
+  }
+
+  def refreshCurrentField(): Unit = {
+    sparkRowField = if (getCurrentField == null) null else getCurrentField.getFieldName
+
+    if (sparkRowField == null) {
+      sparkRowField = Utils.ROOT_LEVEL_NAME
+    }
+  }
+
+  def hasFields(mapping: String): java.lang.Boolean = {
+    val rootField = if (mapping == null) Utils.ROOT_LEVEL_NAME else mapping
+    rowColumnsMap.get(rootField).isDefined
+  }
 }
