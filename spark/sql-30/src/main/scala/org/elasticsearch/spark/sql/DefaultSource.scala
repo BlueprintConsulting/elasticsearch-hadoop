@@ -18,12 +18,19 @@
  */
 package org.elasticsearch.spark.sql
 
+import java.sql.Timestamp
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
 
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.scala.DefaultScalaModule
+import com.fasterxml.jackson.module.scala.experimental.RequiredPropertiesSchemaModule
+import com.fasterxml.jackson.module.scala.experimental.ScalaObjectMapper
 import javax.xml.bind.DatatypeConverter
+import org.apache.commons.lang3.time.DateFormatUtils
+import org.apache.spark.internal.Logging
 import org.apache.commons.logging.LogFactory
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.SaveMode.Append
@@ -88,6 +95,7 @@ import scala.collection.JavaConverters.mapAsJavaMapConverter
 import scala.collection.mutable.LinkedHashMap
 import scala.collection.mutable.{Map => MutableMap}
 import scala.collection.mutable.LinkedHashSet
+import scala.util.Try
 
 private[sql] class DefaultSource extends RelationProvider with SchemaRelationProvider with CreatableRelationProvider with StreamSinkProvider {
 
@@ -226,6 +234,10 @@ private[sql] case class ElasticsearchRelation(parameters: Map[String, String], @
     conf
   }
 
+  @transient private lazy val dateFormats: Map[String, List[String]] = {
+    ElasticsearchRelationUtils.initDateFormatHints(cfg)
+  }
+
   @transient lazy val lazySchema = { SchemaUtils.discoverMapping(cfg) }
 
   @transient lazy val valueWriter = { new ScalaValueWriter }
@@ -353,20 +365,20 @@ private[sql] case class ElasticsearchRelation(parameters: Map[String, String], @
           }
         }
 
-        if (strictPushDown) s"""{"term":{"$attribute":${extract(value)}}}"""
+        if (strictPushDown) s"""{"term":{"$attribute":${extract(attribute, value)}}}"""
         else {
           if (isES50) {
-            s"""{"match":{"$attribute":${extract(value)}}}"""
+            s"""{"match":{"$attribute":${extract(attribute, value)}}}"""
           }
           else {
-            s"""{"query":{"match":{"$attribute":${extract(value)}}}}"""
+            s"""{"query":{"match":{"$attribute":${extract(attribute, value)}}}}"""
           }
         }
       }
-      case GreaterThan(attribute, value)        => s"""{"range":{"$attribute":{"gt" :${extract(value)}}}}"""
-      case GreaterThanOrEqual(attribute, value) => s"""{"range":{"$attribute":{"gte":${extract(value)}}}}"""
-      case LessThan(attribute, value)           => s"""{"range":{"$attribute":{"lt" :${extract(value)}}}}"""
-      case LessThanOrEqual(attribute, value)    => s"""{"range":{"$attribute":{"lte":${extract(value)}}}}"""
+      case GreaterThan(attribute, value)        => s"""{"range":{"$attribute":{"gt" :${extract(attribute, value)}}}}"""
+      case GreaterThanOrEqual(attribute, value) => s"""{"range":{"$attribute":{"gte":${extract(attribute, value)}}}}"""
+      case LessThan(attribute, value)           => s"""{"range":{"$attribute":{"lt" :${extract(attribute, value)}}}}"""
+      case LessThanOrEqual(attribute, value)    => s"""{"range":{"$attribute":{"lte":${extract(attribute, value)}}}}"""
       case In(attribute, values)                => {
         // when dealing with mixed types (strings and numbers) Spark converts the Strings to null (gets confused by the type field)
         // this leads to incorrect query DSL hence why nulls are filtered
@@ -389,7 +401,7 @@ private[sql] case class ElasticsearchRelation(parameters: Map[String, String], @
           }
         }
 
-        if (strictPushDown || isStrictType) s"""{"terms":{"$attribute":${extractAsJsonArray(filtered)}}}"""
+        if (strictPushDown || isStrictType) s"""{"terms":{"$attribute":${extractAsJsonArray(attribute, filtered)}}}"""
         else {
           if (isES50) {
             s"""{"bool":{"should":[${extractMatchArray(attribute, filtered)}]}}"""
@@ -487,8 +499,9 @@ private[sql] case class ElasticsearchRelation(parameters: Map[String, String], @
       // the filters below are available only from Spark 1.5.0
 
       case f:Product if isClass(f, "org.apache.spark.sql.sources.EqualNullSafe")    => {
-        val arg = extract(f.productElement(1))
-        if (strictPushDown) s"""{"term":{"${f.productElement(0)}":$arg}}"""
+        val attribute = String.valueOf(f.productElement(0))
+        val arg = extract(attribute, f.productElement(1))
+        if (strictPushDown) s"""{"term":{"$attribute":$arg}}"""
         else {
           if (isES50) {
             s"""{"match":{"${f.productElement(0)}":$arg}}"""
@@ -507,12 +520,12 @@ private[sql] case class ElasticsearchRelation(parameters: Map[String, String], @
     className.equals(obj.getClass().getName())
   }
 
-  private def extract(value: Any):String = {
-    extract(value, true, false)
+  private def extract(attributeName: String ,value: Any):String = {
+    extract(attributeName, value, true, false)
   }
 
-  private def extractAsJsonArray(value: Any):String = {
-    extract(value, true, true)
+  private def extractAsJsonArray(attributeName: String ,value: Any):String = {
+    extract(attributeName, value, true, true)
   }
 
   private def extractMatchArray(attribute: String, ar: Array[Any]):String = {
@@ -524,8 +537,8 @@ private[sql] case class ElasticsearchRelation(parameters: Map[String, String], @
     // move numbers into a separate list for a terms query combined with a bool
     for (i <- ar) i.asInstanceOf[AnyRef] match {
       case null     => // ignore
-      case n:Number => numbers += extract(i, false, false)
-      case _        => strings += extract(i, false, false)
+      case n:Number => numbers += extract(attribute, i, false, false)
+      case _        => strings += extract(attribute, i, false, false)
     }
 
     if (numbers.isEmpty) {
@@ -556,7 +569,7 @@ private[sql] case class ElasticsearchRelation(parameters: Map[String, String], @
     }
   }
 
-  private def extract(value: Any, inJsonFormat: Boolean, asJsonArray: Boolean):String = {
+  private def extract(attributeName: String, value: Any, inJsonFormat: Boolean, asJsonArray: Boolean):String = {
     // common-case implies primitives and String so try these before using the full-blown ValueWriter
     value match {
       case null           => "null"
@@ -573,15 +586,13 @@ private[sql] case class ElasticsearchRelation(parameters: Map[String, String], @
            _: String      |
            _: Array[Byte]  => if (inJsonFormat) StringUtils.toJsonString(value.toString) else value.toString()
       // handle Timestamp also
-      case dt: Date        => {
-        val cal = Calendar.getInstance()
-        cal.setTime(dt)
-        val str = DatatypeConverter.printDateTime(cal)
-        if (inJsonFormat) StringUtils.toJsonString(str) else str
-      }
+      case dt : Timestamp      =>
+        formatDate(attributeName, inJsonFormat, dt)
+      case dt : Date    =>
+        formatDate(attributeName, inJsonFormat, dt)
       case ar: Array[Any] =>
-        if (asJsonArray) (for (i <- ar) yield extract(i, true, false)).distinct.mkString("[", ",", "]")
-        else (for (i <- ar) yield extract(i, false, false)).distinct.mkString("\"", " ", "\"")
+        if (asJsonArray) (for (i <- ar) yield extract(attributeName, i, true, false)).distinct.mkString("[", ",", "]")
+        else (for (i <- ar) yield extract(attributeName, i, false, false)).distinct.mkString("\"", " ", "\"")
       // new in Spark 1.4
       case utf if (isClass(utf, "org.apache.spark.sql.types.UTF8String")
       // new in Spark 1.5
@@ -596,6 +607,25 @@ private[sql] case class ElasticsearchRelation(parameters: Map[String, String], @
         storage.toString()
       }
     }
+  }
+
+  private def formatDate(attributeName: String, inJsonFormat: Boolean, dt: Any) = {
+    dateFormats.get(attributeName).flatMap(_.headOption).map { format =>
+      formatDateTime(dt.asInstanceOf[Date], inJsonFormat, format)
+    }.getOrElse {
+      formatDefaultDateTime(dt.asInstanceOf[Date], inJsonFormat)
+    }
+  }
+
+  private def formatDefaultDateTime(dt: Date, inJsonFormat: Boolean) = {
+    val cal = Calendar.getInstance()
+    cal.setTime(dt)
+    val str = DatatypeConverter.printDateTime(cal)
+    if (inJsonFormat) StringUtils.toJsonString(str) else str
+  }
+  private def formatDateTime(dt: Date, inJsonFormat: Boolean, dateFormat: String) = {
+    val str = DateFormatUtils.format(dt, dateFormat)
+    if (inJsonFormat) StringUtils.toJsonString(str) else str
   }
 
   def insert(data: DataFrame, overwrite: Boolean): Unit = {
@@ -635,5 +665,31 @@ private[sql] case class ElasticsearchRelation(parameters: Map[String, String], @
       cfg.getInternalVersionOrThrow
     }
     version.onOrAfter(EsMajorVersion.V_5_X)
+  }
+}
+
+object ElasticsearchRelationUtils extends Logging {
+
+  @transient private lazy val objectMapper : Option[ObjectMapper] = Try {
+    val mapper = new ObjectMapper() with ScalaObjectMapper
+    mapper.registerModule(new DefaultScalaModule with RequiredPropertiesSchemaModule)
+  }.toOption
+
+  private[sql] def initDateFormatHints(cfg: Settings): Map[String, List[String]] = {
+
+    val formatsJsonMap = cfg.getProperty(ConfigurationOptions.ES_MAPPING_DATE_FORMAT_MAPPINGS)
+    if (formatsJsonMap != null && formatsJsonMap.trim.nonEmpty) {
+      try {
+        objectMapper.map { mapper =>
+          mapper.readValue(formatsJsonMap, classOf[Map[String, List[String]]])
+        }.getOrElse(Map.empty)
+      } catch {
+        case t: Throwable =>
+          logWarning(s"Failed to initialize custom date formats from $formatsJsonMap , cause : ${t.getMessage}")
+          Map.empty
+      }
+    } else {
+      Map.empty
+    }
   }
 }
