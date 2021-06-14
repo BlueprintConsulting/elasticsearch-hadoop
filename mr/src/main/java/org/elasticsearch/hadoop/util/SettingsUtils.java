@@ -188,25 +188,15 @@ public abstract class SettingsUtils {
         String internalScrollFields = settings.getScrollFields();
         String userProvided = settings.getReadSourceFilter();
 
-        if (StringUtils.hasText(userProvided) && StringUtils.hasText(internalScrollFields)) {
-            // Conflict found
-            throw new EsHadoopIllegalStateException("User specified source filters were found ["+userProvided+"], " +
-                    "but the connector is executing in a state where it has provided its own source filtering " +
-                    "["+internalScrollFields+"]. Please clear the user specified source fields under the " +
-                    "["+ConfigurationOptions.ES_READ_SOURCE_FILTER+"] property to continue. Bailing out...");
+        if (!StringUtils.hasText(userProvided)) {
+            if (StringUtils.hasText(internalScrollFields)) {
+                return internalScrollFields;
+            } else {
+                return null;
+            }
+        } else {
+            return userProvided;
         }
-
-        String sourceFields = null;
-
-        if (StringUtils.hasText(userProvided)) {
-            sourceFields = userProvided;
-        }
-
-        if (StringUtils.hasText(internalScrollFields)) {
-            sourceFields = internalScrollFields;
-        }
-
-        return sourceFields;
     }
 
     /**
