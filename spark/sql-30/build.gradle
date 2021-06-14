@@ -75,9 +75,13 @@ sparkVariants {
             add(variant.configuration('implementation'), "org.apache.spark:spark-yarn_${variant.scalaMajorVersion}:$variant.sparkVersion") {
                 exclude group: 'org.apache.hadoop'
             }
+            add(variant.configuration('compileOnly'), "com.fasterxml.jackson.module:jackson-module-scala_${variant.scalaMajorVersion}:2.6.7.1")
 
             // Scala compiler needs these for arcane reasons, but they are not used in the api nor the runtime
             add(variant.configuration('compileOnly'), "com.fasterxml.jackson.core:jackson-annotations:2.6.7")
+            add(variant.configuration('compileOnly'), "com.fasterxml.jackson.core:jackson-databind:2.6.7")
+            add(variant.configuration('compileOnly'), "com.fasterxml.jackson.core:jackson-core:2.6.7")
+            add(variant.configuration('compileOnly'), "org.apache.commons:commons-lang3:3.12.0")
             add(variant.configuration('compileOnly'), "org.json4s:json4s-jackson_${variant.scalaMajorVersion}:3.6.6")
             add(variant.configuration('compileOnly'), "org.json4s:json4s-ast_${variant.scalaMajorVersion}:3.6.6")
             add(variant.configuration('compileOnly'), "org.apache.spark:spark-tags_${variant.scalaMajorVersion}:$variant.sparkVersion")
